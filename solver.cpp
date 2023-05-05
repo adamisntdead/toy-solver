@@ -89,25 +89,25 @@ class Player {
 
       // Take only the positive values and sum
       float normalizing_sum = 0;
-      for (int i = 0; i < strategy.size(); i++) {
+      for (unsigned i = 0; i < strategy.size(); i++) {
         if (strategy[i] < 0) strategy[i] = 0;
 
         normalizing_sum += strategy[i];
       }
 
       if (normalizing_sum > 0) {
-        for (int i = 0; i < strategy.size(); i++) {
+        for (unsigned i = 0; i < strategy.size(); i++) {
           strategy[i] = strategy[i] / normalizing_sum;
         }
       } else {
         // If we don't have any particular preference for a strategy,
         // we just take each action at equal probability
-        for (int i = 0; i < strategy.size(); i++) {
+        for (unsigned i = 0; i < strategy.size(); i++) {
           strategy[i] = 1.0 / strategy.size();
         }
       }
 
-      for (int i = 0; i < strategy.size(); i++) {
+      for (unsigned i = 0; i < strategy.size(); i++) {
         strategy_sum[i] += strategy[i];
       }
 
@@ -117,14 +117,14 @@ class Player {
     void update_regrets(int my_action, int opp_action) {
       float base_ev = game.get_ev(my_action, opp_action);
 
-      for (int i = 0; i < regret_sum.size(); i++) {
+      for (unsigned i = 0; i < regret_sum.size(); i++) {
         regret_sum[i] += game.get_ev(i, opp_action) - base_ev;
       }
     }
 
     std::vector<float> get_average_strategy() {
       float normalizing_sum = 0;
-      for (int i = 0; i < strategy_sum.size(); i++) {
+      for (unsigned i = 0; i < strategy_sum.size(); i++) {
         normalizing_sum += strategy_sum[i];
       } 
 
@@ -133,11 +133,49 @@ class Player {
       }
 
       std::vector<float> avg_strategy = strategy_sum;
-      for (int i = 0; i < strategy_sum.size(); i++) {
+      for (unsigned i = 0; i < strategy_sum.size(); i++) {
         avg_strategy[i] /= normalizing_sum;
       }  
 
       return avg_strategy;
+    }
+
+    float compare_strategy(std::vector<float> opp_strategy) {
+      std::vector<float> my_strategy = get_average_strategy();
+
+      float ev = 0;
+
+      for (int my_action = 0; my_action < game.num_actions; my_action++) {
+        for (int opp_action = 0; opp_action < game.num_actions; opp_action++) {
+          float my_ev = game.get_ev(my_action, opp_action);
+          float action_probability = my_strategy[my_action] * opp_strategy[opp_action];
+
+          ev += my_ev * action_probability;
+        }
+      }
+
+      return ev;
+    }
+
+    float opponent_best_action_ev(std::vector<float> opp_strategy) {
+      float best_action_ev = 0.0;
+
+      for (int my_action = 0; my_action < game.num_actions; my_action++) {
+        float current_action_ev = 0.0;
+
+        for (int opp_action = 0; opp_action < game.num_actions; opp_action++) {
+          float my_ev = game.get_ev(my_action, opp_action);
+          float play_probability = opp_strategy[opp_action];
+
+          current_action_ev += my_ev * play_probability;
+        }
+      
+        if (best_action_ev <= current_action_ev) {
+            best_action_ev = current_action_ev;
+          }
+      }
+
+      return best_action_ev;
     }
 };
 
@@ -166,6 +204,20 @@ class Trainer {
     std::vector<float> get_average_strategy_p2() {
       return p2.get_average_strategy();
     }
+
+    float get_ev_p1() {
+      std::vector<float> p2_strategy = get_average_strategy_p2();
+  
+      return p1.compare_strategy(p2_strategy);
+    }
+
+    float get_exploitability_p1() {
+      float p1_ev = get_ev_p1();
+      float ev_loss_to_best_response = p2.opponent_best_action_ev(get_average_strategy_p1());
+
+      std::cout << ev_loss_to_best_response << " EV LOSS" << std::endl;
+      return ev_loss_to_best_response - p1_ev;
+    } 
 };
 
 int main() {
@@ -186,11 +238,16 @@ int main() {
   std::vector<float> strategy = trainer.get_average_strategy_p1();
 
   // Print out a list of the probabilities.
-  for (int i = 0; i < strategy.size(); i++) {
+  for (unsigned i = 0; i < strategy.size(); i++) {
     std::cout << g.action_space[i] << ": " << strategy[i];
 
     if (i != strategy.size() - 1) std::cout << ", ";
   }
-
   std::cout << std::endl;
+
+  float p1_ev = trainer.get_ev_p1();
+  float p1_exploitability = trainer.get_exploitability_p1();
+
+  std::cout << "Player 1 EV: " << p1_ev << std::endl;
+  std::cout << "Player 1 Exploitability: " << p1_exploitability << std::endl;
 }
